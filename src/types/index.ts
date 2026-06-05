@@ -37,6 +37,7 @@ export type SpecificationType =
   | 'I'        // 入力仕様書
   | 'C'        // 演算仕様書
   | 'O'        // 出力仕様書
+  | 'A'        // DSPF/DDS Display File仕様書
   | 'FREE'     // 完全自由形式
   | 'COMMENT'  // コメント行
   | 'UNKNOWN'; // 不明
@@ -200,6 +201,16 @@ export interface PSpecColumnData extends ColumnData {
   name?: string;         // 7-21桁: プロシージャ名
   beginEnd?: string;     // 24桁: B(開始)またはE(終了)
   keywords?: string;     // 44-80桁: キーワード
+}
+
+/**
+ * A仕様書（DSPF/DDS Display File）の桁データ
+ */
+export interface ASpecColumnData extends ColumnData {
+  name?: string;           // 7-20桁: フィールド名またはレコード名
+  recordFormatType?: string; // 23-24桁: レコードフォーマット識別子（R等）
+  positionSpecs?: string;  // 23-43桁: 位置・長さなどの固定列情報
+  keywords?: string;       // 44-80桁: キーワード
 }
 
 /**

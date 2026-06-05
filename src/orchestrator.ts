@@ -11,6 +11,7 @@ import { SyntaxChecker } from './checkers/syntax-checker.js';
 import { NamingChecker } from './checkers/naming-checker.js';
 import { BestPracticeChecker } from './checkers/best-practice-checker.js';
 import { CommonErrorsChecker } from './checkers/common-errors-checker.js';
+import { DisplayFileChecker } from './checkers/display-file-checker.js';
 
 /**
  * Orchestrator class
@@ -239,6 +240,7 @@ export class Orchestrator {
     const namingChecker = new NamingChecker();
     const bestPracticeChecker = new BestPracticeChecker(this.customRulesPath);
     const commonErrorsChecker = new CommonErrorsChecker();
+    const displayFileChecker = new DisplayFileChecker(this.considerDBCS);
 
     // Run each checker
     allIssues.push(...structureChecker.check(lines, checkLevel));
@@ -246,6 +248,7 @@ export class Orchestrator {
     allIssues.push(...namingChecker.check(lines, checkLevel));
     allIssues.push(...bestPracticeChecker.check(lines, checkLevel));
     allIssues.push(...commonErrorsChecker.check(lines, checkLevel));
+    allIssues.push(...displayFileChecker.check(lines, checkLevel));
 
     return allIssues;
   }
@@ -273,6 +276,7 @@ export class Orchestrator {
       'I': 0,
       'C': 0,
       'O': 0,
+      'A': 0,
       'FREE': 0,
       'COMMENT': 0,
       'UNKNOWN': 0

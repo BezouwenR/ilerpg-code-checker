@@ -11,6 +11,7 @@ import {
   FSpecColumnData,
   DSpecColumnData,
   PSpecColumnData,
+  ASpecColumnData,
   CSpecColumnData
 } from '../types/index.js';
 
@@ -182,8 +183,8 @@ export class RPGParser {
     // 6桁目（インデックス5）で仕様書タイプを判定
     const col6 = line[5];
 
-    // コメント行のチェック（6桁目が'*'）
-    if (col6 === '*') return 'COMMENT';
+    // コメント行のチェック（7桁目が'*'）
+    if (line.length >= 7 && line[6] === '*') return 'COMMENT';
 
     // 各仕様書タイプのチェック
     switch (col6.toUpperCase()) {
@@ -194,6 +195,7 @@ export class RPGParser {
       case 'I': return 'I';
       case 'C': return 'C';
       case 'O': return 'O';
+      case 'A': return 'A';
       default: return 'UNKNOWN';
     }
   }
@@ -314,6 +316,8 @@ export class RPGParser {
         return this.extractPSpecData(line);
       case 'C':
         return this.extractCSpecData(line);
+      case 'A':
+        return this.extractASpecData(line);
       default:
         return undefined;
     }
@@ -353,7 +357,21 @@ export class RPGParser {
       keywords: this.extractColumn(line, 43, 80)           // 44-80桁
     };
   }
-  
+
+  /**
+   * A仕様書の桁データを抽出
+   * @param line 行の内容
+   * @returns A仕様書の桁データ
+   */
+  private extractASpecData(line: string): ASpecColumnData {
+    return {
+      name: this.extractColumn(line, 6, 21),            // 7-20桁: フィールド名またはレコード名
+      recordFormatType: this.extractColumn(line, 22, 24), // 23-24桁: レコードフォーマット識別子（R等）
+      positionSpecs: this.extractColumn(line, 22, 43),    // 23-43桁: 位置・長さなどの固定列情報
+      keywords: this.extractColumn(line, 43, 80)         // 44-80桁: キーワード
+    };
+  }
+
   /**
    * D仕様書の桁データを抽出
    *
