@@ -435,6 +435,15 @@ guricat
 
 ## Changelog
 
+### 0.0.8 (2026-06-06)
+- Renamed display name to "ILE-RPG&DSPF Code Checker" (internal identifier unchanged)
+- Fixed DSPF/DDS A-spec false positives by aligning column parsing with the IBM DDS layout (name 19-28, length 30-34, line 39-41, position 42-44)
+- Scoped field-overlap detection to within each record format (R)
+- Excluded A-spec from quote/parenthesis matching (DDS uses different continuation rules)
+- Distinguished WINDOW definition vs reference; detect standalone OVERLAY (no parentheses)
+- Limited the DBCS position-shift warning to the fixed-column area (cols 1-44)
+- Excluded CNTFLD (continued fields) from line-overflow checks
+
 ### 0.0.7 (2026-02-12)
 - Fixed false positives for WCA4i test cases
 - Improved parser robustness for continuation lines
