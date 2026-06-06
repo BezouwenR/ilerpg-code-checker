@@ -435,6 +435,11 @@ guricat
 
 ## Changelog
 
+### 0.0.9 (2026-06-06)
+- Fixed INDICATOR_USAGE (numbered indicator) false positives
+  - Excluded F-spec `OFLIND(*INxx)` (PRINTER overflow indicator), since `*INxx` is mandatory by language spec and cannot be a named indicator
+  - Excluded `*INxx` strings inside comment lines (col 7 = `*`, e.g. `F*`/`C*`/`D*`)
+
 ### 0.0.8 (2026-06-06)
 - Renamed display name to "ILE-RPG&DSPF Code Checker" (internal identifier unchanged)
 - Fixed DSPF/DDS A-spec false positives by aligning column parsing with the IBM DDS layout (name 19-28, length 30-34, line 39-41, position 42-44)

@@ -132,13 +132,36 @@ export class BestPracticeChecker implements Checker {
     const indicatorLines = this.analyzer.findIndicatorUsage(lines);
 
     for (const line of indicatorLines) {
-      // 標識のパターンを抽出
-      const matches = line.rawContent.match(/\*IN(\d{2})/gi);
-      if (!matches) continue;
+      // コメント行（col7='*' の F*/C*/D* 等）は対象外。
+      // コメント内に書かれた *INxx 文字列に反応しない。
+      if (line.isComment) continue;
 
-      for (const match of matches) {
-        const indicatorNum = match.substring(3);
-        
+      const content = line.rawContent;
+
+      // 言語仕様上 *INxx が必須で名前付き化できない文脈（OFLIND など）の
+      // 文字範囲を収集し、その範囲内の *INxx は警告対象から除外する。
+      // 例: FAIRPTP O E PRINTER OFLIND(*IN90)
+      //     PRINTER ファイルの OFLIND は *INxx 形式が必須で、名前付き標識は
+      //     完全自由形式(**FREE)でなければ指定できない。
+      const exemptRanges: Array<[number, number]> = [];
+      const oflindPattern = /OFLIND\([^)]*\)/gi;
+      let oflindMatch: RegExpExecArray | null;
+      while ((oflindMatch = oflindPattern.exec(content)) !== null) {
+        exemptRanges.push([oflindMatch.index, oflindMatch.index + oflindMatch[0].length]);
+      }
+
+      // 標識のパターンを抽出（位置情報付きで取得し、除外範囲を判定）
+      const indicatorPattern = /\*IN(\d{2})/gi;
+      let m: RegExpExecArray | null;
+      while ((m = indicatorPattern.exec(content)) !== null) {
+        const match = m[0];
+        const idx = m.index;
+
+        // OFLIND() など必須文脈内の標識はスキップ
+        if (exemptRanges.some(([start, end]) => idx >= start && idx < end)) {
+          continue;
+        }
+
         issues.push({
           severity: 'warning',
           category: 'best-practice',
