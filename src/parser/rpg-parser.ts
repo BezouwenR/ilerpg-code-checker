@@ -359,16 +359,41 @@ export class RPGParser {
   }
 
   /**
-   * A仕様書の桁データを抽出
+   * A仕様書（DSPF/DDS Display File）の桁データを抽出
+   *
+   * IBM DDS 表示装置ファイルのソースレコード桁位置 (1始まり → 0始まりインデックス):
+   *   桁1-5(idx0-4):     順序番号
+   *   桁6(idx5):         様式タイプ 'A'
+   *   桁7-16(idx6-15):   条件付け（標識）領域
+   *   桁17(idx16):       名前タイプ (R=レコード様式 / H=ヘルプ / 空白=フィールド)
+   *   桁18(idx17):       予約
+   *   桁19-28(idx18-27): 名前
+   *   桁29(idx28):       参照(R)
+   *   桁30-34(idx29-33): 長さ（右詰め）
+   *   桁35(idx34):       データ型／キーボードシフト
+   *   桁36-37(idx35-36): 小数桁
+   *   桁38(idx37):       用法 (H/B/O/I/M/P)
+   *   桁39-41(idx38-40): 位置 — 表示行
+   *   桁42-44(idx41-43): 位置 — 表示列
+   *   桁45-80(idx44-79): 機能（キーワード）
+   *
    * @param line 行の内容
    * @returns A仕様書の桁データ
    */
   private extractASpecData(line: string): ASpecColumnData {
     return {
-      name: this.extractColumn(line, 6, 21),            // 7-20桁: フィールド名またはレコード名
-      recordFormatType: this.extractColumn(line, 22, 24), // 23-24桁: レコードフォーマット識別子（R等）
-      positionSpecs: this.extractColumn(line, 22, 43),    // 23-43桁: 位置・長さなどの固定列情報
-      keywords: this.extractColumn(line, 43, 80)         // 44-80桁: キーワード
+      conditioning: this.extractColumn(line, 6, 16),       // 7-16桁: 条件付け（標識）
+      nameType: this.extractColumn(line, 16, 17),          // 17桁: 名前タイプ (R/H/空白)
+      name: this.extractColumn(line, 18, 28),              // 19-28桁: フィールド名/レコード名
+      length: this.extractColumn(line, 29, 34),            // 30-34桁: 長さ
+      dataType: this.extractColumn(line, 34, 35),          // 35桁: データ型/キーボードシフト
+      decimalPositions: this.extractColumn(line, 35, 37),  // 36-37桁: 小数桁
+      usage: this.extractColumn(line, 37, 38),             // 38桁: 用法
+      row: this.extractColumn(line, 38, 41),               // 39-41桁: 表示行
+      column: this.extractColumn(line, 41, 44),            // 42-44桁: 表示列
+      keywords: this.extractColumn(line, 44, 80),          // 45-80桁: 機能（キーワード）
+      positionSpecs: this.extractColumn(line, 16, 44),     // 17-44桁: 固定列情報（後方互換）
+      recordFormatType: this.extractColumn(line, 16, 17)   // 後方互換: 名前タイプ
     };
   }
 

@@ -51,41 +51,59 @@ export class DisplayFileChecker implements Checker {
 
   private checkDSPFFieldDefinitions(lines: ParsedLine[]): Issue[] {
     const issues: Issue[] = [];
-    const fieldInfos = lines
-      .map(line => this.parseDisplayFieldInfo(line))
-      .filter(Boolean) as DisplayFieldInfo[];
 
-    const fieldsWithPositions = fieldInfos.filter(info => !info.isRecordFormat && info.row !== undefined && info.column !== undefined && info.length !== undefined);
+    // DSPFは1ファイルに複数の独立したレコード様式(R)を持ち、別々のタイミングで
+    // 表示される。異なるレコード様式のフィールドは同時に表示されないため、重なり
+    // 判定はレコード様式単位で行う必要がある。ソース順に走査して様式ごとに分離する。
+    let currentRecord = '(GLOBAL)';
+    const recordFields = new Map<string, DisplayFieldInfo[]>();
 
-    const groupedByRow = new Map<number, DisplayFieldInfo[]>();
-    for (const info of fieldsWithPositions) {
-      const row = info.row!;
-      if (!groupedByRow.has(row)) groupedByRow.set(row, []);
-      groupedByRow.get(row)!.push(info);
+    for (const line of lines) {
+      const info = this.parseDisplayFieldInfo(line);
+      if (!info) continue;
+      if (info.isRecordFormat) {
+        currentRecord = info.fieldName ?? `REC@${line.lineNumber}`;
+        continue;
+      }
+      // 長さが明示されている名前付きフィールドのみを重なり判定対象にする。
+      // 定数（リテラル）はDBCS表示幅などの不確定要素が大きく、誤検出の原因となる
+      // ため対象外とする（真の重なりはCRTDSPFのCPD7866で検出する想定）。
+      if (info.row === undefined || info.column === undefined || info.length === undefined) continue;
+      if (!recordFields.has(currentRecord)) recordFields.set(currentRecord, []);
+      recordFields.get(currentRecord)!.push(info);
     }
 
-    for (const [row, rowFields] of groupedByRow.entries()) {
-      rowFields.sort((a, b) => (a.column! - b.column!));
-      for (let i = 0; i < rowFields.length - 1; i++) {
-        const current = rowFields[i];
-        const next = rowFields[i + 1];
-        // 標識で制御されているフィールドは重なり判定から除外する
-        if (current.hasIndicatorControl || next.hasIndicatorControl) continue;
-        if (next.column! <= current.endColumn!) {
-          const message = `DSPFフィールドが同一行(${row})で重なっています。` +
-            ` '${current.fieldName ?? '(無名)'}' (col${current.column}-${current.endColumn}) と ` +
-            `'${next.fieldName ?? '(無名)'}' (col${next.column}-${next.endColumn}) が重複します。`;
-          issues.push({
-            severity: 'error',
-            category: 'structure',
-            line: next.line.lineNumber,
-            column: next.column,
-            message,
-            rule: 'DSPF_FIELD_OVERLAP',
-            ruleDescription: '同一表示行内で列の重なりがあると、DSPFの表示フィールドが競合し、意図しない表示結果になる可能性があります。',
-            suggestion: 'ROW/COL/LENGTHの値を見直し、重複が発生しないように調整してください。',
-            codeSnippet: next.line.rawContent
-          });
+    for (const fields of recordFields.values()) {
+      const groupedByRow = new Map<number, DisplayFieldInfo[]>();
+      for (const info of fields) {
+        const row = info.row!;
+        if (!groupedByRow.has(row)) groupedByRow.set(row, []);
+        groupedByRow.get(row)!.push(info);
+      }
+
+      for (const [row, rowFields] of groupedByRow.entries()) {
+        rowFields.sort((a, b) => (a.column! - b.column!));
+        for (let i = 0; i < rowFields.length - 1; i++) {
+          const current = rowFields[i];
+          const next = rowFields[i + 1];
+          // 標識で条件付けされているフィールドは重なり判定から除外する
+          if (current.hasIndicatorControl || next.hasIndicatorControl) continue;
+          if (next.column! <= current.endColumn!) {
+            const message = `DSPFフィールドが同一行(${row})で重なっています。` +
+              ` '${current.fieldName ?? '(無名)'}' (col${current.column}-${current.endColumn}) と ` +
+              `'${next.fieldName ?? '(無名)'}' (col${next.column}-${next.endColumn}) が重複します。`;
+            issues.push({
+              severity: 'error',
+              category: 'structure',
+              line: next.line.lineNumber,
+              column: next.column,
+              message,
+              rule: 'DSPF_FIELD_OVERLAP',
+              ruleDescription: '同一レコード様式・同一表示行内で列の重なりがあると、DSPFの表示フィールドが競合し、意図しない表示結果になる可能性があります。',
+              suggestion: 'ROW/COL/LENGTHの値を見直し、重複が発生しないように調整してください。',
+              codeSnippet: next.line.rawContent
+            });
+          }
         }
       }
     }
@@ -97,7 +115,8 @@ export class DisplayFileChecker implements Checker {
     const issues: Issue[] = [];
     const windowLines = lines.filter(line => this.isWindowLine(line));
     const recordFormats = lines.filter(line => this.isRecordFormat(line));
-    const overlayLines = lines.filter(line => /OVERLAY\s*\(/i.test(line.rawContent));
+    // OVERLAYはパラメータなしの単独形（OVERLAY）も有効なため、括弧の有無を問わず検出する。
+    const overlayLines = lines.filter(line => /\bOVERLAY\b/i.test(line.rawContent));
 
     if (windowLines.length > 0 && recordFormats.length === 0) {
       issues.push({
@@ -113,17 +132,22 @@ export class DisplayFileChecker implements Checker {
       });
     }
 
-    if (windowLines.length > 0 && overlayLines.length === 0) {
+    // WINDOW定義（数値パラメータで枠を定義する形式）はウィンドウそのものの定義であり
+    // OVERLAYを必須としない。*NOMSGLINや専用レコード様式を伴う正当なパターンも多いため、
+    // OVERLAY要否の警告はWINDOW参照（WINDOW(*DFT)/WINDOW(レコード名)等）に限定する。
+    const referenceWindows = windowLines.filter(line => !this.isWindowDefinition(line));
+    if (referenceWindows.length > 0 && overlayLines.length === 0) {
+      const target = referenceWindows[0];
       issues.push({
         severity: 'warning',
         category: 'structure',
-        line: windowLines[0].lineNumber,
-        column: windowLines[0].rawContent.toUpperCase().indexOf('WINDOW') + 1,
-        message: 'WINDOW指定がありますが、OVERLAY指定が見つかりません。WINDOWレコードでは特別なレコード様式と OVERLAY が必要になる場合があります。',
+        line: target.lineNumber,
+        column: target.rawContent.toUpperCase().indexOf('WINDOW') + 1,
+        message: 'WINDOW参照がありますが、OVERLAY指定が見つかりません。ウィンドウを参照するレコードではOVERLAYが必要になる場合があります。',
         rule: 'DSPF_WINDOW_WITHOUT_OVERLAY',
-        ruleDescription: 'WINDOWを使用する場合、DISPLAY FILEではOVERLAYや専用のウィンドウレコード形式を組み合わせることが多いです。',
-        suggestion: 'WINDOWレコードに適切なOVERLAYやレコードフォーマットを追加してください。',
-        codeSnippet: windowLines[0].rawContent
+        ruleDescription: 'WINDOW(*DFT)やWINDOW(レコード名)でウィンドウを参照する場合、OVERLAYや専用のウィンドウレコード形式を組み合わせることが多いです。WINDOW定義行（数値パラメータ）はOVERLAY不要です。',
+        suggestion: 'ウィンドウを参照するレコードに適切なOVERLAYを追加してください。WINDOW定義行であればこの警告は無視できます。',
+        codeSnippet: target.rawContent
       });
     }
 
@@ -135,13 +159,16 @@ export class DisplayFileChecker implements Checker {
 
     const issues: Issue[] = [];
     for (const line of lines) {
-      if (!DBCSHelper.containsDBCS(line.rawContent)) continue;
       const info = this.parseDisplayFieldInfo(line);
       if (!info || info.isRecordFormat) continue;
       if (info.row === undefined || info.column === undefined) continue;
 
-      const analysis = DBCSHelper.analyzeString(line.rawContent);
-      if (!analysis.containsDBCS) continue;
+      // DBCS文字が機能（キーワード）領域（桁45以降）の定数リテラル内にあるだけの場合、
+      // 表示行・列は固定桁（桁39-44）で明示されており位置はずれない。SO/SIはコンパイル時に
+      // 処理され実機表示にも影響しないため、警告しない（実DSPFで大量の誤検出となるため）。
+      // 桁ずれの実害があるのは固定桁領域（桁1-44）にDBCS文字が混入している異常時のみ。
+      const fixedArea = line.rawContent.substring(0, Math.min(44, line.rawContent.length));
+      if (!DBCSHelper.containsDBCS(fixedArea)) continue;
 
       const byteLength = DBCSHelper.calculateByteLength(line.rawContent);
       const shiftedBytes = byteLength - line.rawContent.length;
@@ -152,10 +179,10 @@ export class DisplayFileChecker implements Checker {
         category: 'structure',
         line: line.lineNumber,
         column: 7,
-        message: `DSPF行にDBCS文字が含まれているため、EBCDIC変換後にROW/COL位置がずれる可能性があります。実際のバイト長は${byteLength}バイトです。`,
+        message: `DSPF行の固定桁領域（桁1-44）にDBCS文字が含まれているため、EBCDIC変換後にROW/COL位置がずれる可能性があります。実際のバイト長は${byteLength}バイトです。`,
         rule: 'DSPF_DBCS_POSITION_SHIFT',
-        ruleDescription: 'DSPFソース内のDBCS文字はEBCDIC 5035変換後にSO/SIフレームを含むため、固定位置指定がずれる可能性があります。',
-        suggestion: 'ROW/COL指定の前後にDBCS文字がないか確認し、必要に応じて位置を再調整してください。',
+        ruleDescription: 'DSPFソースの固定桁領域内のDBCS文字はEBCDIC 5035変換後にSO/SIフレームを含むため、固定位置指定がずれる可能性があります。桁45以降の定数リテラル内のDBCSは位置に影響しません。',
+        suggestion: 'フィールド名や位置指定の桁にDBCS文字が混入していないか確認してください。',
         codeSnippet: line.rawContent
       });
     }
@@ -165,54 +192,38 @@ export class DisplayFileChecker implements Checker {
 
   private parseDisplayFieldInfo(line: ParsedLine): DisplayFieldInfo | null {
     if (!line.columnData) return null;
+    const cd = line.columnData as any;
     const raw = line.rawContent;
-    const positionSpecs = (line.columnData as any).positionSpecs ?? '';
-    const keywords = (line.columnData as any).keywords ?? '';
-    const combinedArea = `${positionSpecs} ${keywords}`;
+    const keywords: string = cd.keywords ?? '';
     const isRecordFormat = this.isRecordFormat(line);
     const hasWindow = this.isWindowLine(line);
-    const hasOverlay = /OVERLAY\s*\(/i.test(raw);
-    // 標識制御の検出: '*INnn' 形式や IND( ... ) のような記述を検出
-    const hasIndicatorControl = /\*IN\d{2}/i.test(combinedArea) || /IND\s*\(/i.test(combinedArea) || /INDICATOR\b/i.test(combinedArea);
+    const hasOverlay = /\bOVERLAY\b/i.test(raw);
 
-    let row: number | undefined;
-    let column: number | undefined;
-    let length: number | undefined;
+    // 条件付け（標識）領域（桁7-16）に標識指定があるフィールドは、表示が
+    // 条件付きであり同時に表示されない可能性があるため、重なり判定から除外する。
+    const conditioning: string = cd.conditioning ?? '';
+    const hasIndicatorControl = /\d/.test(conditioning) ||
+      /\*IN\d{2}/i.test(keywords) || /\bIND\s*\(/i.test(keywords) || /\bINDICATOR\b/i.test(keywords);
 
-    const positionMatch = /POSITION\s*\(\s*(\d+)(?:\s*,\s*(\d+))?\s*\)/i.exec(combinedArea);
+    // 固定桁（DDS 表示装置ファイル）から行・列・長さを取得する。
+    let row = this.toInt(cd.row);
+    let column = this.toInt(cd.column);
+    let length = this.toInt(cd.length);
+
+    // 一部のDDSではキーワードでPOSITION()/ROW()/COL()/LENGTH()を指定する場合があるため補完する。
+    const positionMatch = /\bPOSITION\s*\(\s*(\d+)(?:\s*,\s*(\d+))?\s*\)/i.exec(keywords);
     if (positionMatch) {
-      row = parseInt(positionMatch[1], 10);
-      if (positionMatch[2]) {
-        column = parseInt(positionMatch[2], 10);
-      }
+      if (row === undefined) row = parseInt(positionMatch[1], 10);
+      if (positionMatch[2] && column === undefined) column = parseInt(positionMatch[2], 10);
     }
+    const rowMatch = /\bROW\s*\(\s*(\d+)\s*\)/i.exec(keywords);
+    if (rowMatch && row === undefined) row = parseInt(rowMatch[1], 10);
+    const colMatch = /\bCOL(?:UMN)?\s*\(\s*(\d+)\s*\)/i.exec(keywords);
+    if (colMatch && column === undefined) column = parseInt(colMatch[1], 10);
+    const lengthMatch = /\bLEN(?:GTH)?\s*\(\s*(\d+)\s*\)/i.exec(keywords);
+    if (lengthMatch && length === undefined) length = parseInt(lengthMatch[1], 10);
 
-    const rowMatch = /ROW\s*\(\s*(\d+)\s*\)/i.exec(combinedArea);
-    if (rowMatch) {
-      row = parseInt(rowMatch[1], 10);
-    }
-
-    const colMatch = /COL(?:UMN)?\s*\(\s*(\d+)\s*\)/i.exec(combinedArea);
-    if (colMatch) {
-      column = parseInt(colMatch[1], 10);
-    }
-
-    const lengthMatch = /LENGTH\s*\(\s*(\d+)\s*\)/i.exec(combinedArea) || /LEN\s*\(\s*(\d+)\s*\)/i.exec(combinedArea);
-    if (lengthMatch) {
-      length = parseInt(lengthMatch[1], 10);
-    }
-
-    // 固定形式DSPFでは位置指定がキーワード領域ではなく、位置列に直接数値が並ぶ場合がある
-    if (row === undefined || column === undefined || length === undefined) {
-      const numericTokens = (positionSpecs.match(/\d+/g) || []).map((token: string) => parseInt(token, 10));
-      if (numericTokens.length >= 3) {
-        if (row === undefined) row = numericTokens[0];
-        if (column === undefined) column = numericTokens[1];
-        if (length === undefined) length = numericTokens[2];
-      }
-    }
-
-    const endColumn = row !== undefined && column !== undefined && length !== undefined
+    const endColumn = column !== undefined && length !== undefined
       ? column + length - 1
       : undefined;
 
@@ -240,11 +251,27 @@ export class DisplayFileChecker implements Checker {
   }
 
   private isRecordFormat(line: ParsedLine): boolean {
-    return line.rawContent.length >= 23 && line.rawContent[22].toUpperCase() === 'R';
+    // DDS 表示装置ファイルでは桁17(idx16)が'R'ならレコード様式定義。
+    return line.rawContent.length >= 17 && line.rawContent[16].toUpperCase() === 'R';
   }
 
   private isWindowLine(line: ParsedLine): boolean {
     return /WINDOW\b/i.test(line.rawContent);
+  }
+
+  /**
+   * WINDOW定義行かどうか（WINDOW(行 列 高さ 幅 ...) のように数値で枠を定義する形式）。
+   * 数値パラメータで枠を定義するWINDOWはウィンドウそのものの定義であり、
+   * OVERLAY指定を必須としない。
+   */
+  private isWindowDefinition(line: ParsedLine): boolean {
+    return /WINDOW\s*\(\s*[*]?\s*\d/i.test(line.rawContent);
+  }
+
+  private toInt(value: string | undefined): number | undefined {
+    if (value === undefined) return undefined;
+    const n = parseInt(value, 10);
+    return Number.isNaN(n) ? undefined : n;
   }
 
   private checkPSHBTNSpacing(lines: ParsedLine[]): Issue[] {
@@ -375,7 +402,11 @@ export class DisplayFileChecker implements Checker {
 
     for (const f of fieldInfos) {
       if (f.isRecordFormat) continue;
-      if (f.endColumn !== undefined && f.endColumn > 80) {
+      // CNTFLD（連続フィールド）は指定幅で複数表示行に折り返す連続入力フィールドであり、
+      // 論理長（LENGTH）が80桁を超えても表示は折り返されるため正常。行幅超過チェックから除外する。
+      // 固定桁では列桁の数字とキーワードが密着する（例: "16CNTFLD"）ため、先頭の\bは付けない。
+      const isContinuedField = /CNTFLD\s*\(/i.test(f.line.rawContent);
+      if (!isContinuedField && f.endColumn !== undefined && f.endColumn > 80) {
         issues.push({
           severity: 'error',
           category: 'structure',
@@ -384,7 +415,7 @@ export class DisplayFileChecker implements Checker {
           message: `フィールドが行幅(80)を超えてはみ出しています（endCol=${f.endColumn}）。`,
           rule: 'DSPF_FIELD_OVERFLOW_LINE',
           ruleDescription: 'フィールドやリテラルが設定された列数を超えると、表示が次行に流れたり切れる可能性があります。',
-          suggestion: 'LENGTHやCOLを見直し、80列以内に収めてください。',
+          suggestion: 'LENGTHやCOLを見直し、80列以内に収めてください。CNTFLD（連続フィールド）の場合はこの限りではありません。',
           codeSnippet: f.line.rawContent
         });
       }

@@ -401,6 +401,11 @@ export class CommonErrorsChecker implements Checker {
       if (line.isComment || line.specificationType === 'UNKNOWN' ||
           line.specificationType === 'FREE' || line.specificationType === 'COMMENT') continue;
 
+      // A仕様（DSPF/DDS）はRPGとは異なる継続規則（行末'-'/'+'）を持ち、キーワードが
+      // 複数物理行に跨るため、物理行単位の括弧対応チェックは誤検出になる。DDSの括弧整合は
+      // CRTDSPFに委ねるため、ここでは対象外とする。
+      if (line.specificationType === 'A') continue;
+
       // 継続行は前の行の一部なのでスキップ（まとめてチェックしない簡易版）
       if (line.isContinuation) continue;
 
@@ -455,6 +460,10 @@ export class CommonErrorsChecker implements Checker {
     for (const line of lines) {
       if (line.isComment || line.specificationType === 'UNKNOWN' ||
           line.specificationType === 'FREE' || line.specificationType === 'COMMENT') continue;
+
+      // A仕様（DSPF/DDS）は文字列リテラルが行末'-'/'+'で複数物理行に跨るため、物理行単位の
+      // クォート対応チェックは誤検出になる。DDSのクォート整合はCRTDSPFに委ねて対象外とする。
+      if (line.specificationType === 'A') continue;
 
       // 継続行はスキップ（前の行と合わせて文字列が完結する可能性がある）
       if (line.isContinuation) continue;

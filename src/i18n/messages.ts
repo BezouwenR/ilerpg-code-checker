@@ -66,7 +66,7 @@ export interface Messages {
 
 const englishMessages: Messages = {
   // General
-  checkResult: 'ILE-RPG Coding Standards Check Result',
+  checkResult: 'ILE-RPG&DSPF Coding Standards Check Result',
   file: 'File',
   summary: 'Summary',
   totalIssues: 'Total Issues',
@@ -125,7 +125,7 @@ const englishMessages: Messages = {
 
 const japaneseMessages: Messages = {
   // General
-  checkResult: 'ILE-RPG コーディング標準チェック結果',
+  checkResult: 'ILE-RPG&DSPF コーディング標準チェック結果',
   file: 'ファイル',
   summary: 'サマリー',
   totalIssues: '総問題数',

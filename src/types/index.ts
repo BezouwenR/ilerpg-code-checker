@@ -207,10 +207,18 @@ export interface PSpecColumnData extends ColumnData {
  * A仕様書（DSPF/DDS Display File）の桁データ
  */
 export interface ASpecColumnData extends ColumnData {
-  name?: string;           // 7-20桁: フィールド名またはレコード名
-  recordFormatType?: string; // 23-24桁: レコードフォーマット識別子（R等）
-  positionSpecs?: string;  // 23-43桁: 位置・長さなどの固定列情報
-  keywords?: string;       // 44-80桁: キーワード
+  name?: string;             // 19-28桁: フィールド名またはレコード名
+  nameType?: string;         // 17桁: 名前タイプ (R=レコード様式 / H=ヘルプ / 空白=フィールド)
+  conditioning?: string;     // 7-16桁: 条件付け（標識）領域
+  length?: string;           // 30-34桁: 長さ（右詰め）
+  dataType?: string;         // 35桁: データ型／キーボードシフト
+  decimalPositions?: string; // 36-37桁: 小数桁
+  usage?: string;            // 38桁: 用法 (H/B/O/I/M/P)
+  row?: string;              // 39-41桁: 表示行（位置）
+  column?: string;           // 42-44桁: 表示列（位置）
+  keywords?: string;         // 45-80桁: 機能（キーワード）
+  positionSpecs?: string;    // 17-44桁: 固定列情報（後方互換用）
+  recordFormatType?: string; // 後方互換用
 }
 
 /**
