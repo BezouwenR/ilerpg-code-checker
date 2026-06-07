@@ -435,6 +435,13 @@ guricat
 
 ## Changelog
 
+### 0.0.10 (2026-06-07)
+- Removed the erroneous F_SPEC_SPACING check (false positives on valid code)
+  - Column 17 of an F-spec is the File Type field (I/O/U/C), not a required space; a 10-character file name (e.g. `AICHATHSTD`) is followed directly by the File Type letter, which is valid and compiles
+- Downgraded D_SPEC_NAME_POSITION from `warning` to `info`
+  - The column-7/column-8 start convention is a style recommendation, not a compile requirement; a name placed anywhere within columns 7-21 compiles cleanly
+- Verified against the known-good `E:/IBM_i_and_AI/src` sources (*.sqlrpgle / *.dspf): 0 errors / 0 warnings at standard and strict levels
+
 ### 0.0.9 (2026-06-06)
 - Fixed INDICATOR_USAGE (numbered indicator) false positives
   - Excluded F-spec `OFLIND(*INxx)` (PRINTER overflow indicator), since `*INxx` is mandatory by language spec and cannot be a named indicator

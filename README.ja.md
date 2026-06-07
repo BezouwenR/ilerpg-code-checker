@@ -435,6 +435,13 @@ guricat
 
 ## 更新履歴
 
+### 0.0.10 (2026-06-07)
+- 誤検出だった F_SPEC_SPACING チェックを削除（正常なコードを誤って指摘していた）
+  - F仕様の桁17は File Type フィールド（I/O/U/C）であり「ファイル名の後のスペース」ではない。10桁ぴったりのファイル名（例 `AICHATHSTD`）の直後にFile Type文字が来るのは正常でコンパイルも成功する
+- D_SPEC_NAME_POSITION を `warning` から `info` に降格
+  - 桁7/桁8開始の規則はスタイル推奨であってコンパイル要件ではない。桁7-21の範囲内であればどこから始めても正常コンパイルされる
+- 正常コンパイル確認済みの `E:/IBM_i_and_AI/src`（*.sqlrpgle / *.dspf）で検証: standard/strict 両レベルで error 0 / warning 0
+
 ### 0.0.9 (2026-06-06)
 - INDICATOR_USAGE（数字付き標識）チェックの偽陽性（false positive）を修正
   - F仕様 `OFLIND(*INxx)`（PRINTERオーバーフロー標識）を警告対象から除外（`*INxx`が言語仕様上必須で名前付き化不可のため）

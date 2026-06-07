@@ -27,9 +27,6 @@ export class CommonErrorsChecker implements Checker {
   check(lines: ParsedLine[], checkLevel: CheckLevel): Issue[] {
     const issues: Issue[] = [];
 
-    // Check F-spec spacing issues
-    issues.push(...this.checkFSpecSpacing(lines));
-
     // Check D-spec column errors
     issues.push(...this.checkDSpecColumnErrors(lines));
 
@@ -50,45 +47,6 @@ export class CommonErrorsChecker implements Checker {
     // Check string literals (standard level and above)
     if (checkLevel !== 'basic') {
       issues.push(...this.checkStringLiterals(lines));
-    }
-
-    return issues;
-  }
-
-  /**
-   * Check F-spec spacing issues
-   * @param lines Array of parsed lines
-   * @returns Array of detected issues
-   */
-  private checkFSpecSpacing(lines: ParsedLine[]): Issue[] {
-    const issues: Issue[] = [];
-
-    for (const line of lines) {
-      if (line.specificationType !== 'F' || line.isComment) continue;
-
-      // Check if there's no space after filename field (columns 7-16)
-      if (line.rawContent.length >= 17) {
-        const fileName = line.rawContent.substring(6, 16);
-        const nextChar = line.rawContent[16];
-
-        // If filename uses all 10 characters and next column is not a space
-        if (fileName.trim().length === 10 && nextChar !== ' ') {
-          // 修正コード生成: col17にスペースを挿入
-          const corrected = line.rawContent.substring(0, 16) + ' ' + line.rawContent.substring(16);
-          issues.push({
-            severity: 'error',
-            category: 'structure',
-            line: line.lineNumber,
-            column: 17,
-            message: 'F仕様書のファイル名フィールドの後にスペースが必要です。',
-            rule: 'F_SPEC_SPACING',
-            ruleDescription: 'ファイル名が10文字の場合、17桁目はスペースである必要があります。',
-            suggestion: '17桁目にスペースを挿入してください。',
-            codeSnippet: line.rawContent,
-            correctedCode: corrected
-          });
-        }
-      }
     }
 
     return issues;

@@ -667,14 +667,14 @@ export class StructureChecker implements Checker {
         const correctedName = nameTrimmed.padEnd(15);
         const corrected = line.rawContent.substring(0, 6) + correctedName + line.rawContent.substring(21);
         issues.push({
-          severity: 'warning',
+          severity: 'info',
           category: 'structure',
           line: line.lineNumber,
           column: 7,
           endColumn: 21,
-          message: `D仕様書の宣言名'${nameTrimmed}'は桁7から開始する必要があります（現在、先頭にスペースがあります）。`,
+          message: `D仕様書の宣言名'${nameTrimmed}'は桁7から開始することが推奨されます（現在、先頭にスペースがあります）。`,
           rule: 'D_SPEC_NAME_POSITION',
-          ruleDescription: 'DS/PR/PI/S/C等の宣言名は桁7（D仕様書識別子の直後）から開始します。',
+          ruleDescription: 'DS/PR/PI/S/C等の宣言名は桁7（D仕様書識別子の直後）から開始するスタイルが推奨されます。桁7-21の範囲内であればコンパイルは可能です。',
           suggestion: `'${nameTrimmed}'の前の余分なスペースを削除してください。`,
           codeSnippet: line.rawContent,
           correctedCode: corrected
@@ -687,14 +687,14 @@ export class StructureChecker implements Checker {
         const correctedName = ' ' + nameTrimmed.padEnd(14);
         const corrected = line.rawContent.substring(0, 6) + correctedName + line.rawContent.substring(21);
         issues.push({
-          severity: 'warning',
+          severity: 'info',
           category: 'structure',
           line: line.lineNumber,
           column: 7,
           endColumn: 21,
-          message: `D仕様書のサブフィールド'${nameTrimmed}'は桁8から開始する必要があります（桁7にスペースが必要です）。`,
+          message: `D仕様書のサブフィールド'${nameTrimmed}'は桁8から開始することが推奨されます（桁7にスペースを推奨）。`,
           rule: 'D_SPEC_NAME_POSITION',
-          ruleDescription: 'サブフィールド（宣言型なし）は桁8から開始します（桁7は空白）。宣言名（DS/PR/PI等）と区別するためです。',
+          ruleDescription: 'サブフィールド（宣言型なし）は桁8から開始するスタイルが推奨されます（桁7は空白）。宣言名（DS/PR/PI等）と区別するためです。桁7-21の範囲内であればコンパイルは可能です。',
           suggestion: `'${nameTrimmed}'の前にスペースを1つ追加してください。`,
           codeSnippet: line.rawContent,
           correctedCode: corrected
