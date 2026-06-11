@@ -431,9 +431,16 @@ guricat
 
 ## Version
 
-0.0.11
+0.0.12
 
 ## Changelog
+
+### 0.0.12 (2026-06-11)
+- Resolved the column-22 `E` ambiguity using context, closing most of the v0.0.11 blind spot where an overflowing name happened to end with `E` at column 22
+  - **PR/PI parameter lines**: D lines with a blank definition type following a PR/PI declaration are now tracked as parameters. Since column 22 must be blank in parameter definitions even when it is `E` (RNF3780), `E` is reported as name overflow (D_SPEC_NAME_OVERFLOW) or an invalid value (D_SPEC_EXT_DESC_INVALID) with certainty
+  - **Externally described DS lines**: `E` + no EXTNAME + a name of 11+ characters cannot compile under either interpretation (without EXTNAME the name field is used as the file name, max 10 characters) → new rule `D_SPEC_EXTNAME_REQUIRED` (error)
+  - `E` on subfield lines outside PR/PI blocks (externally described subfields) remains out of scope, as it is indistinguishable from valid code
+- Expanded the regression test to 20 cases (added multi-line PR/PI block context cases); verified 0 false positives across all `E:/IBM_i_and_AI/src` sources
 
 ### 0.0.11 (2026-06-11)
 - Added D-spec name overflow detection: `D_SPEC_NAME_OVERFLOW` (error)

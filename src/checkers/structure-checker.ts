@@ -140,10 +140,38 @@ export class StructureChecker implements Checker {
   private checkColumnPositions(lines: ParsedLine[], checkLevel: CheckLevel): Issue[] {
     const issues: Issue[] = [];
 
+    // PR/PIブロックの追跡:
+    // D仕様書で宣言型(col24-25)がPR/PIの行以降、宣言型が空白のD行は
+    // パラメータ定義であり、col22-23は値にかかわらず空白必須（RNF3780）。
+    // 宣言型が非空白の別定義（DS/S/C/E）または他仕様書の行でブロック終了。
+    let inPrPiBlock = false;
+
     for (const line of lines) {
       if (line.isComment) continue;
 
-      const columnIssues = this.checkLineColumnPositions(line, checkLevel);
+      let isPrPiParameter = false;
+      if (line.specificationType === 'D') {
+        if (!line.isContinuation) {
+          const raw = line.rawContent;
+          const codeArea = raw.substring(0, Math.min(80, raw.length)).trimEnd();
+          // 名前継続行（...）は宣言型を持たないため状態を変えない
+          if (!codeArea.endsWith('...')) {
+            const declType = raw.length >= 24 ? raw.substring(23, 25).trim().toUpperCase() : '';
+            if (declType === 'PR' || declType === 'PI') {
+              inPrPiBlock = true;
+            } else if (declType !== '') {
+              inPrPiBlock = false;
+            } else {
+              isPrPiParameter = inPrPiBlock;
+            }
+          }
+        }
+      } else if (line.specificationType !== 'UNKNOWN' && line.specificationType !== 'COMMENT') {
+        // 他仕様書（F/C/P等）やFREE行が来たらPR/PIブロック終了
+        inPrPiBlock = false;
+      }
+
+      const columnIssues = this.checkLineColumnPositions(line, checkLevel, isPrPiParameter);
       issues.push(...columnIssues);
     }
 
@@ -156,14 +184,14 @@ export class StructureChecker implements Checker {
    * @param checkLevel チェックレベル
    * @returns 検出された問題の配列
    */
-  private checkLineColumnPositions(line: ParsedLine, checkLevel: CheckLevel): Issue[] {
+  private checkLineColumnPositions(line: ParsedLine, checkLevel: CheckLevel, isPrPiParameter: boolean = false): Issue[] {
     switch (line.specificationType) {
       case 'H':
         return this.checkHSpecColumns(line, checkLevel);
       case 'F':
         return this.checkFSpecColumns(line, checkLevel);
       case 'D':
-        return this.checkDSpecColumns(line, checkLevel);
+        return this.checkDSpecColumns(line, checkLevel, isPrPiParameter);
       case 'P':
         return this.checkPSpecColumns(line, checkLevel);
       case 'C':
@@ -323,7 +351,7 @@ export class StructureChecker implements Checker {
    * @param checkLevel チェックレベル
    * @returns 検出された問題の配列
    */
-  private checkDSpecColumns(line: ParsedLine, checkLevel: CheckLevel): Issue[] {
+  private checkDSpecColumns(line: ParsedLine, checkLevel: CheckLevel, isPrPiParameter: boolean = false): Issue[] {
     const issues: Issue[] = [];
 
     // 6桁目が'D'であることを確認
@@ -397,7 +425,7 @@ export class StructureChecker implements Checker {
     issues.push(...this.checkDSpecDeclTypeMisplaced(line));
 
     // col22（外部記述）・col23（DS型）の値検証と名前あふれ検出
-    issues.push(...this.checkDSpecBlankFields(line));
+    issues.push(...this.checkDSpecBlankFields(line, isPrPiParameter));
 
     // サブフィールド名末尾ピリオドチェック
     issues.push(...this.checkDSpecTrailingPeriod(line));
@@ -892,8 +920,14 @@ export class StructureChecker implements Checker {
    * 特に、名前がcol21を超えてcol22に食み出すケース（例: col9開始の14文字名）は、
    * col33以降のフィールドが正規位置のままだと他のチェックでは検出できない。
    * col21が埋まっていてcol22に識別子文字が続く場合は名前あふれとして報告する。
+   *
+   * col22='E'の曖昧性解消:
+   * - PR/PIパラメータ行（isPrPiParameter）: 'E'も空白必須違反なので名前あふれ／不正値として報告
+   * - DS行でEXTNAME未指定かつ名前11文字以上: EXTNAME省略時は名前欄=ファイル名（最大10文字）
+   *   なのでどちらの解釈でもエラー確定 → D_SPEC_EXTNAME_REQUIRED
+   * - それ以外の'E'（外部記述サブフィールド等）: 正当コードと区別できないためスキップ
    */
-  private checkDSpecBlankFields(line: ParsedLine): Issue[] {
+  private checkDSpecBlankFields(line: ParsedLine, isPrPiParameter: boolean = false): Issue[] {
     const issues: Issue[] = [];
     const raw = line.rawContent;
     if (raw.length < 22) return issues;
@@ -913,8 +947,11 @@ export class StructureChecker implements Checker {
       (['S', 'C'].includes(col22.toUpperCase()) && col23 === ' ' && col24 === ' ');
 
     let overflowReported = false;
+    const col22U = col22.toUpperCase();
 
-    if (col22 !== ' ' && col22.toUpperCase() !== 'E') {
+    // PR/PIパラメータ定義行ではcol22は'E'でも不正（RNF3780: 空白必須）のため、
+    // 'E'も名前あふれ・不正値の判定対象に含める
+    if (col22 !== ' ' && (col22U !== 'E' || isPrPiParameter)) {
       if (col21 !== ' ' && isNameChar(col22)) {
         // 名前フィールドがcol21まで埋まり、col22に識別子文字が続く = 名前あふれ
         const nameStart = raw.substring(6).search(/\S/);
@@ -937,6 +974,19 @@ export class StructureChecker implements Checker {
           correctedCode: contLine + '\n' + restLine
         });
         overflowReported = true;
+      } else if (col22U === 'E') {
+        // パラメータ行に意図的な'E'（外部記述指定）が置かれたケース
+        issues.push({
+          severity: 'error',
+          category: 'structure',
+          line: line.lineNumber,
+          column: 22,
+          message: `PR/PIパラメータ定義行の22桁目に'E'があります。パラメータ定義では22桁は空白必須です。`,
+          rule: 'D_SPEC_EXT_DESC_INVALID',
+          ruleDescription: 'プロトタイプ・パラメータ定義で使用できる欄は7-21/24-25/33-39/40/41-42/44-80桁のみです。22桁が非空白だとRNF3780（重大度20）になります。',
+          suggestion: '22桁目を空白にしてください。',
+          codeSnippet: raw
+        });
       } else {
         if (!isMisplacedPattern) {
           issues.push({
@@ -951,6 +1001,27 @@ export class StructureChecker implements Checker {
             codeSnippet: raw
           });
         }
+      }
+    } else if (col22U === 'E' && declType === 'DS') {
+      // 外部記述DS（22桁='E'）: EXTNAME未指定の場合、名前欄（7-21桁）がそのまま
+      // 外部記述ファイル名として使われる（IBM Docs d22）。IBM iのファイル名は
+      // 最大10文字なので、名前が11文字以上ならどちらの解釈でもコンパイル不能
+      // （名前のあふれ、またはファイル名超過）であり確定で報告できる
+      const keywords = raw.length > 43 ? raw.substring(43) : '';
+      const hasExtName = /\bEXTNAME\s*\(/i.test(keywords);
+      const nameTrimmed = raw.substring(6, 21).trim();
+      if (!hasExtName && nameTrimmed.length >= 11) {
+        issues.push({
+          severity: 'error',
+          category: 'structure',
+          line: line.lineNumber,
+          column: 22,
+          message: `外部記述DS（22桁='E'）でEXTNAMEがなく、名前'${nameTrimmed}'が11文字以上です。EXTNAME未指定時は名前欄がファイル名として使われますが、ファイル名は最大10文字です。`,
+          rule: 'D_SPEC_EXTNAME_REQUIRED',
+          ruleDescription: '22桁目に\'E\'を指定しEXTNAMEキーワードを省略した場合、名前欄（7-21桁）が外部記述ファイル名として使われます（最大10文字）。名前が11文字以上の場合、名前の22桁目への食み出し（\'E\'が名前の一部）か、EXTNAME指定漏れのどちらかであり、いずれもコンパイルエラーになります。',
+          suggestion: `EXTNAME('ファイル名')を指定するか、名前が22桁目に食み出していないか確認してください。`,
+          codeSnippet: raw
+        });
       }
     }
 
