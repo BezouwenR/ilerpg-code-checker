@@ -65,5 +65,44 @@ check('continued-literal-overlap-detected', continuation, o => o.length === 1);
 const aiadmnd = fs.readFileSync('E:/IBM_i_and_AI/src/AIADMND.dspf', 'utf-8');
 check('current-AIADMND-clean', aiadmnd, o => o.length === 0);
 
+// --- ケース7: 先頭属性バイト衝突 (AITNTCFGD CTLWIN 行4 実例・CPD7866) ---
+// '状態:' (4,2) = SO+状態+SI+':' = 7バイト → col2-8。'テナント' (4,9) の
+// 先頭属性バイト位置 col8 に ':' のデータ → データは隣接で重ならないがCPD7866。
+const attrCollision = [
+  "     A          R CTLWIN",
+  "     A                                  4  2'状態:'",
+  "     A                                      COLOR(BLU)",
+  "     A                                  4  9'テナント'",
+  "     A                                      COLOR(BLU)",
+  "     A            CWTNS          8O  O  4 21",
+].join('\n');
+check('attr-byte-collision-detected', attrCollision, o => o.length === 1 && o[0].line === 4);
+
+// --- ケース8: 修正後 (テナント col10 = 属性バイト分1桁空き) → 0件 ---
+const attrFixed = attrCollision.replace("4  9'テナント'", "4 10'テナント'");
+check('attr-byte-gap1-clean', attrFixed, o => o.length === 0);
+
+// --- ケース9: SBCS定数直後のフィールド開始も属性バイト衝突 (CWOPT 14,12 実例) ---
+// '選択 ==>' = SO+選択+SI+' ==>' = 10バイト → col2-11。CWOPT col12開始は属性バイトがcol11の'>'に乗る。
+const sbcsAttrCollision = [
+  "     A          R CTLWIN",
+  "     A                                 14  2'選択 ==>'",
+  "     A            CWOPT          1A  B 14 12COLOR(WHT)",
+].join('\n');
+check('sbcs-attr-byte-collision-detected', sbcsAttrCollision, o => o.length === 1);
+check('sbcs-attr-byte-gap-clean',
+  sbcsAttrCollision.replace('14 12COLOR', '14 14COLOR'), o => o.length === 0);
+
+// --- ケース10: 半角カタカナはSBCS(1バイト) — DBCS扱いの過大計上で偽陽性にしない (AIOPSD実例) ---
+// '日次ﾄｰｸﾝ上限 (0=無制限):' = SO日次SI(6)+ﾄｰｸﾝ(4)+SO上限SI(6)+' (0='(4)+SO無制限SI(8)+'):'(2)
+// = 30バイト → col2-31。UTTOK (7,34) の属性バイトはcol33で空き → 重なりなし。
+const halfwidthKana = [
+  "     A          R OPSCRN",
+  "     A                                  7  2'日次ﾄｰｸﾝ上限 (0=無制限):'",
+  "     A                                      COLOR(BLU)",
+  "     A            UTTOK          9Y 0B  7 34",
+].join('\n');
+check('halfwidth-katakana-sbcs-clean', halfwidthKana, o => o.length === 0);
+
 console.log(failed === 0 ? '\nAll tests passed.' : `\n${failed} test(s) FAILED.`);
 process.exit(failed === 0 ? 0 : 1);

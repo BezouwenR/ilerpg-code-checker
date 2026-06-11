@@ -99,13 +99,25 @@ export class DisplayFileChecker implements Checker {
           // 可能性が高いため除外する（CPD7865相当・意図的なパターン）。
           // 片方でも無条件なら同時表示が確定するため報告する（CPD7866相当・実害あり）。
           if (current.hasIndicatorControl && next.hasIndicatorControl) continue;
-          if (next.column! <= current.endColumn!) {
+          // 5250では各フィールドの開始位置の直前1桁を先頭属性バイトが占有する。
+          // この属性バイト位置に前のフィールドのデータがあってはならないため、
+          // 前フィールドのデータ末尾と次フィールドのデータ開始の間に最低1桁の
+          // 空きが必要。ギャップ0（end+1から開始）は先頭属性バイトが前フィールドの
+          // データに乗るため、データ自体の重なりと同じくCPD7866になる。
+          // （実例: AITNTCFGD CTLWIN '状態:'col2-8 と 'テナント'col9開始 → CPD7866）
+          if (next.column! <= current.endColumn! + 1) {
             const describe = (f: DisplayFieldInfo): string =>
               f.fieldName ?? (f.isConstant ? '(定数)' : '(無名)');
-            const message = `DSPFフィールドが同一行(${row})で重なっています。` +
-              ` '${describe(current)}' (col${current.column}-${current.endColumn}) と ` +
-              `'${describe(next)}' (col${next.column}-${next.endColumn}) が重複します。` +
-              `CRTDSPFではCPD7866（重大度10）となり、フィールドが表示されない実害があります。`;
+            const isAttributeCollision = next.column! === current.endColumn! + 1;
+            const message = isAttributeCollision
+              ? `DSPFフィールドの先頭属性バイトが同一行(${row})で前のフィールドと衝突しています。` +
+                ` '${describe(next)}' (col${next.column}開始) の属性バイト位置(col${current.endColumn})に ` +
+                `'${describe(current)}' (col${current.column}-${current.endColumn}) のデータがあります。` +
+                `CRTDSPFではCPD7866（重大度10）となり、フィールドが表示されない実害があります。`
+              : `DSPFフィールドが同一行(${row})で重なっています。` +
+                ` '${describe(current)}' (col${current.column}-${current.endColumn}) と ` +
+                `'${describe(next)}' (col${next.column}-${next.endColumn}) が重複します。` +
+                `CRTDSPFではCPD7866（重大度10）となり、フィールドが表示されない実害があります。`;
             issues.push({
               severity: 'error',
               category: 'structure',
@@ -113,8 +125,8 @@ export class DisplayFileChecker implements Checker {
               column: next.column,
               message,
               rule: 'DSPF_FIELD_OVERLAP',
-              ruleDescription: '同一レコード様式・同一表示行内で列の重なりがあると、コンパイラがフィールド配置を破棄し、フィールドが画面に表示されない実害があります。DBCS定数の表示長はEBCDIC変換後のバイト長（SO/SI込み: DBCS n文字 = 2n+2バイト）で計算されます。',
-              suggestion: 'ROW/COL/LENGTHの値を見直し、重複が発生しないように調整してください。DBCS定数の直後にフィールドを置く場合は1桁以上の間隔を空けてください。',
+              ruleDescription: '同一レコード様式・同一表示行内で列の重なりがあると、コンパイラがフィールド配置を破棄し、フィールドが画面に表示されない実害があります。5250では各フィールド開始位置の直前1桁に先頭属性バイトが必要なため、前フィールドのデータ末尾と次フィールドのデータ開始の間に最低1桁の空きが必要です。DBCS定数の表示長はEBCDIC変換後のバイト長（SO/SI込み: DBCS n文字 = 2n+2バイト）で計算されます。',
+              suggestion: 'ROW/COL/LENGTHの値を見直し、前のフィールド末尾と次のフィールド開始の間に最低1桁の空きを確保してください（属性バイト分）。',
               codeSnippet: next.line.rawContent
             });
           }

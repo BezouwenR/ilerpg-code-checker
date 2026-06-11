@@ -431,9 +431,16 @@ guricat
 
 ## Version
 
-0.0.13
+0.0.14
 
 ## Changelog
+
+### 0.0.14 (2026-06-12)
+- Added **leading attribute byte collision** detection to DSPF_FIELD_OVERLAP (real case: AITNTCFGD.dspf CTLWIN row 4 — `'状態:'`(4,2)=7 bytes col2-8 and `'テナント'`(4,9) are adjacent without data overlap, yet CPD7866 was issued)
+  - On 5250 displays, the **position immediately preceding each field is occupied by its leading attribute byte**, so at least one blank column is required between the end of one field's data and the start of the next. A gap of 0 (starting at end+1) places the attribute byte on the previous field's data and causes CPD7866. The check was extended from `next.col <= current.endCol` to `next.col <= current.endCol + 1`, with a dedicated message for attribute-byte collisions
+  - A gap of 1 (starting at end+2) is valid since the attribute byte fits in the blank column (no false positive)
+- Fixed **halfwidth katakana misclassification** in DBCSHelper: U+FF00-FFEF was treated as DBCS wholesale, doubling the byte length of halfwidth katakana (U+FF61-FF9F, which is SBCS = 1 byte via code page 290 in EBCDIC 5026/5035). Surfaced as a false positive on `'日次ﾄｰｸﾝ上限 (0=無制限):'` (AIOPSD.dspf) once the attribute-byte check was added. Halfwidth forms (U+FF61-FFDC, U+FFE8-FFEE) are now SBCS
+- Added 5 regression test cases (DBCS-constant attribute-byte collision / gap-1 clean / field starting right after an SBCS constant / its fix / halfwidth-katakana constant). Verified 0 false positives across all 10 DSPF files in `E:/IBM_i_and_AI/src`. During verification, the checker also caught `CWOPT`(14,12) in the user's in-progress AITNTCFGD CTLWIN edit as a true positive (attribute byte colliding with `>` at col11 of `'選択 ==>'`)
 
 ### 0.0.13 (2026-06-11)
 - Fixed DSPF_FIELD_OVERLAP (CPD7866-equivalent) misses (real case: in AIADMND.dspf TENFTR, the overlap between the unconditioned constant `'F3/12=戻る  F5=再表示'` and the indicator-77 conditioned constant `'F6=追加'` went undetected)

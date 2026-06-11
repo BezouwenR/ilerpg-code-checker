@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where:*)",
+      "Bash(npm root:*)",
+      "Bash(dir:*)",
+      "Bash(cmd /c \"dir %LOCALAPPDATA%\\\\Programs\\\\claude-code 2>&1\")",
+      "Bash(cmd /c \"dir C:\\\\Users\\\\user\\\\.local\\\\bin\\\\claude* 2>&1\")",
+      "Bash(cmd /c \"setx PATH \"\"%PATH%;C:\\\\Users\\\\user\\\\.local\\\\bin\"\"\")",
+      "Bash(cmd /c \"reg query HKCU\\\\Environment /v PATH 2>&1\")",
+      "Bash(powershell -Command \"[Environment]::GetEnvironmentVariable\\(''PATH'', ''User''\\)\")",
+      "Bash(powershell:*)",
+      "Bash(powershell.exe -ExecutionPolicy Bypass -File \"C:/Users/user/add_path.ps1\")",
+      "Bash(powershell.exe -Command \"[Environment]::GetEnvironmentVariable\\(''PATH'', ''User''\\)\")"
+    ]
+  }
+}

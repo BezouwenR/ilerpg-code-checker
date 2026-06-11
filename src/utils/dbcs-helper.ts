@@ -40,9 +40,15 @@ export class DBCSHelper {
     // Hangul Syllables (U+AC00 to U+D7AF) - Korean
     if (code >= 0xAC00 && code <= 0xD7AF) return true;
     
-    // Full-width Latin characters (U+FF00 to U+FFEF)
+    // Halfwidth forms within U+FF00-FFEF are SBCS in EBCDIC mixed CCSIDs (5026/5035):
+    // U+FF61-FF9F 半角カタカナ・半角句読点(｡｢｣､･), U+FFA0-FFDC halfwidth Hangul,
+    // U+FFE8-FFEE halfwidth signs — 1バイト(コードページ290)なのでDBCS扱いしない
+    if (code >= 0xFF61 && code <= 0xFFDC) return false;
+    if (code >= 0xFFE8 && code <= 0xFFEE) return false;
+
+    // Full-width Latin characters and fullwidth signs (U+FF00 to U+FFEF, excluding halfwidth forms above)
     if (code >= 0xFF00 && code <= 0xFFEF) return true;
-    
+
     return false;
   }
 
