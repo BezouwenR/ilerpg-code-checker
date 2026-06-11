@@ -431,9 +431,16 @@ guricat
 
 ## Version
 
-0.0.12
+0.0.13
 
 ## Changelog
+
+### 0.0.13 (2026-06-11)
+- Fixed DSPF_FIELD_OVERLAP (CPD7866-equivalent) misses (real case: in AIADMND.dspf TENFTR, the overlap between the unconditioned constant `'F3/12=戻る  F5=再表示'` and the indicator-77 conditioned constant `'F6=追加'` went undetected)
+  - **Constants (literals) are now included in overlap detection**: previously only named fields were checked, so constant-vs-constant and constant-vs-field overlaps (the typical CPD7866 pattern) all passed through. Display length is computed deterministically as the post-EBCDIC byte length (n DBCS characters = 2n+2 bytes including SO/SI). Constant continuation lines (`'+'` = continue from the first non-blank of the next line, `'-'` = continue from column 45 of the next line) are supported
+  - **Indicator exclusion narrowed to "both sides conditioned" only**: previously any indicator on either side skipped the check, but CPD7866 means an overlap with a field *without* conditioning. Only mutually exclusive pairs like 77/N77 (CPD7865-equivalent, intentional) are excluded; an overlap with an unconditioned side is reported
+- Added CJK Symbols and Punctuation (U+3000-303F: ideographic space, 「」, 。, ・ etc.) to DBCSHelper as DBCS (byte length was previously underestimated)
+- Added regression test `test-dspf-overlap.mjs` (pre-fix AIADMND overlap detected / post-fix clean / exclusive-indicator pairs not reported / continued-literal length). Verified 0 false positives across all 10 DSPF files in `E:/IBM_i_and_AI/src` and no change in results for all RPG sources
 
 ### 0.0.12 (2026-06-11)
 - Resolved the column-22 `E` ambiguity using context, closing most of the v0.0.11 blind spot where an overflowing name happened to end with `E` at column 22

@@ -21,7 +21,10 @@ export class DBCSHelper {
     if (!char || char.length === 0) return false;
     
     const code = char.charCodeAt(0);
-    
+
+    // CJK Symbols and Punctuation (U+3000 to U+303F) - 全角スペース、「」、。・等
+    if (code >= 0x3000 && code <= 0x303F) return true;
+
     // Japanese Hiragana (U+3040 to U+309F)
     if (code >= 0x3040 && code <= 0x309F) return true;
     

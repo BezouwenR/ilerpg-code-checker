@@ -17,6 +17,7 @@ interface DisplayFieldInfo {
   hasWindow: boolean;
   hasOverlay: boolean;
   hasIndicatorControl?: boolean;
+  isConstant?: boolean;
   dbcsAnalysis?: {
     byteLength: number;
     dbcsCount: number;
@@ -58,17 +59,25 @@ export class DisplayFileChecker implements Checker {
     let currentRecord = '(GLOBAL)';
     const recordFields = new Map<string, DisplayFieldInfo[]>();
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       const info = this.parseDisplayFieldInfo(line);
       if (!info) continue;
       if (info.isRecordFormat) {
         currentRecord = info.fieldName ?? `REC@${line.lineNumber}`;
         continue;
       }
-      // 長さが明示されている名前付きフィールドのみを重なり判定対象にする。
-      // 定数（リテラル）はDBCS表示幅などの不確定要素が大きく、誤検出の原因となる
-      // ため対象外とする（真の重なりはCRTDSPFのCPD7866で検出する想定）。
-      if (info.row === undefined || info.column === undefined || info.length === undefined) continue;
+      if (info.row === undefined || info.column === undefined) continue;
+      // 長さ未定の行は定数（リテラル）の可能性がある。表示長はEBCDIC変換後の
+      // バイト長（DBCSはSO/SI込み）として確定計算できるため、重なり判定の対象に
+      // 含める（CPD7866相当の重なりは定数が相手でも実害がある）。
+      if (info.length === undefined) {
+        const literal = this.extractConstantLiteral(lines, i);
+        if (literal === undefined) continue;
+        info.length = DBCSHelper.calculateByteLength(literal);
+        info.endColumn = info.column + info.length - 1;
+        info.isConstant = true;
+      }
       if (!recordFields.has(currentRecord)) recordFields.set(currentRecord, []);
       recordFields.get(currentRecord)!.push(info);
     }
@@ -86,12 +95,17 @@ export class DisplayFileChecker implements Checker {
         for (let i = 0; i < rowFields.length - 1; i++) {
           const current = rowFields[i];
           const next = rowFields[i + 1];
-          // 標識で条件付けされているフィールドは重なり判定から除外する
-          if (current.hasIndicatorControl || next.hasIndicatorControl) continue;
+          // 両方が標識で条件付けされている場合は排他表示（例: 77/N77の切替）の
+          // 可能性が高いため除外する（CPD7865相当・意図的なパターン）。
+          // 片方でも無条件なら同時表示が確定するため報告する（CPD7866相当・実害あり）。
+          if (current.hasIndicatorControl && next.hasIndicatorControl) continue;
           if (next.column! <= current.endColumn!) {
+            const describe = (f: DisplayFieldInfo): string =>
+              f.fieldName ?? (f.isConstant ? '(定数)' : '(無名)');
             const message = `DSPFフィールドが同一行(${row})で重なっています。` +
-              ` '${current.fieldName ?? '(無名)'}' (col${current.column}-${current.endColumn}) と ` +
-              `'${next.fieldName ?? '(無名)'}' (col${next.column}-${next.endColumn}) が重複します。`;
+              ` '${describe(current)}' (col${current.column}-${current.endColumn}) と ` +
+              `'${describe(next)}' (col${next.column}-${next.endColumn}) が重複します。` +
+              `CRTDSPFではCPD7866（重大度10）となり、フィールドが表示されない実害があります。`;
             issues.push({
               severity: 'error',
               category: 'structure',
@@ -99,8 +113,8 @@ export class DisplayFileChecker implements Checker {
               column: next.column,
               message,
               rule: 'DSPF_FIELD_OVERLAP',
-              ruleDescription: '同一レコード様式・同一表示行内で列の重なりがあると、DSPFの表示フィールドが競合し、意図しない表示結果になる可能性があります。',
-              suggestion: 'ROW/COL/LENGTHの値を見直し、重複が発生しないように調整してください。',
+              ruleDescription: '同一レコード様式・同一表示行内で列の重なりがあると、コンパイラがフィールド配置を破棄し、フィールドが画面に表示されない実害があります。DBCS定数の表示長はEBCDIC変換後のバイト長（SO/SI込み: DBCS n文字 = 2n+2バイト）で計算されます。',
+              suggestion: 'ROW/COL/LENGTHの値を見直し、重複が発生しないように調整してください。DBCS定数の直後にフィールドを置く場合は1桁以上の間隔を空けてください。',
               codeSnippet: next.line.rawContent
             });
           }
@@ -248,6 +262,54 @@ export class DisplayFileChecker implements Checker {
         shiftCharacters: dbcsAnalysis.shiftCharacters
       } : undefined
     };
+  }
+
+  /**
+   * 定数（リテラル）行から表示文字列を抽出する。
+   * 機能領域（桁45-80）が引用符で始まる行のみ対象（DATE/TIME等のキーワード定数は対象外）。
+   * DDSの定数継続に対応する:
+   *   行末の '+' = 次行の機能領域の最初の非ブランク文字から継続
+   *   行末の '-' = 次行の桁45から（先行ブランクを含めて）継続
+   * '' は引用符1文字のエスケープとして扱う。
+   * @returns リテラル内容（引用符・継続記号を除く）。リテラル定数でない場合は undefined
+   */
+  private extractConstantLiteral(lines: ParsedLine[], startIndex: number): string | undefined {
+    const functionalArea = (l: ParsedLine): string => l.rawContent.padEnd(80).substring(44, 80);
+
+    let segment = functionalArea(lines[startIndex]);
+    const quoteIndex = segment.indexOf("'");
+    if (quoteIndex < 0 || segment.substring(0, quoteIndex).trim() !== '') return undefined;
+    segment = segment.substring(quoteIndex + 1);
+
+    let literal = '';
+    let lineIndex = startIndex;
+    while (lineIndex < lines.length) {
+      let pos = 0;
+      let chunk = '';
+      while (pos < segment.length) {
+        const ch = segment[pos];
+        if (ch === "'") {
+          if (segment[pos + 1] === "'") {
+            chunk += "'";
+            pos += 2;
+            continue;
+          }
+          return literal + chunk; // 閉じ引用符で完結
+        }
+        chunk += ch;
+        pos++;
+      }
+      // 行末まで閉じていない場合、最後の非ブランクが継続記号であること
+      const trimmedChunk = chunk.trimEnd();
+      const continuation = trimmedChunk.charAt(trimmedChunk.length - 1);
+      if (continuation !== '+' && continuation !== '-') return undefined;
+      literal += trimmedChunk.substring(0, trimmedChunk.length - 1);
+      lineIndex++;
+      if (lineIndex >= lines.length) return undefined;
+      const nextArea = functionalArea(lines[lineIndex]);
+      segment = continuation === '+' ? nextArea.replace(/^\s+/, '') : nextArea;
+    }
+    return undefined;
   }
 
   private isRecordFormat(line: ParsedLine): boolean {
