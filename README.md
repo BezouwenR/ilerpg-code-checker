@@ -431,9 +431,19 @@ guricat
 
 ## Version
 
-0.0.7
+0.0.11
 
 ## Changelog
+
+### 0.0.11 (2026-06-11)
+- Added D-spec name overflow detection: `D_SPEC_NAME_OVERFLOW` (error)
+  - Detects names that overflow the name field (columns 7-21) into column 22 and beyond (e.g. a 14-character name starting at column 9). Previously undetectable when the remaining fields stayed at their correct columns (real case: `P_DBC_CONSUMED` in AIMONR.sqlrpgle caused RNF3780 severity 20)
+  - Provides a Before/After correction using the `...` name-continuation syntax
+- Added value validation for column 22 (External Description) and column 23 (Type of Data Structure): `D_SPEC_EXT_DESC_INVALID` / `D_SPEC_DS_TYPE_INVALID` (error)
+  - Per the IBM ILE RPG Reference, column 22 allows only `E`/blank and column 23 allows only `S` (PSDS) / `U` (data-area DS) / blank; non-blank values outside a DS definition cause RNF3780, so these are reported as errors
+  - Also detects `S`/`U` in column 23 when columns 24-25 are not `DS`
+- D_SPEC_DECL_TYPE_MISPLACED no longer fires when column 21 (the last name-field column) is occupied (reported as name overflow instead)
+- Verified 0 false positives across all known-good `E:/IBM_i_and_AI/src` sources; added regression test `test-dspec-overflow.mjs`
 
 ### 0.0.10 (2026-06-07)
 - Removed the erroneous F_SPEC_SPACING check (false positives on valid code)

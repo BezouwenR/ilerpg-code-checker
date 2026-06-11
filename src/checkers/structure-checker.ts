@@ -396,6 +396,9 @@ export class StructureChecker implements Checker {
     // 宣言型の桁位置誤配置チェック（col22-23にDS/PR/PI等がないか）
     issues.push(...this.checkDSpecDeclTypeMisplaced(line));
 
+    // col22（外部記述）・col23（DS型）の値検証と名前あふれ検出
+    issues.push(...this.checkDSpecBlankFields(line));
+
     // サブフィールド名末尾ピリオドチェック
     issues.push(...this.checkDSpecTrailingPeriod(line));
 
@@ -805,6 +808,10 @@ export class StructureChecker implements Checker {
     const issues: Issue[] = [];
     if (line.rawContent.length < 24) return issues;
 
+    // col21（名前フィールド最終桁）が埋まっている場合、col22以降の文字は
+    // 名前のあふれであり宣言型の誤配置ではない → checkDSpecBlankFieldsに委ねる
+    if (line.rawContent[20] !== ' ') return issues;
+
     // col22-23（idx21-22）に宣言型が誤って配置されていないか
     const col22_23 = line.rawContent.substring(21, 23);
     const col22_23Trimmed = col22_23.trim().toUpperCase();
@@ -865,6 +872,115 @@ export class StructureChecker implements Checker {
             });
           }
         }
+      }
+    }
+
+    return issues;
+  }
+
+  /**
+   * D仕様書のcol22（外部記述）・col23（DS型）フィールドをチェック
+   *
+   * IBM ILE RPG Reference（7.4 dspec d22/d23）より:
+   * - col22 (External Description): 'E'または空白のみ有効。
+   *   DS/サブフィールドを外部記述として定義しない行では空白必須。
+   * - col23 (Type of Data Structure): 空白/'S'(PSDS)/'U'(データ域DS)のみ有効。
+   *   DSを定義しない行では空白必須。
+   * - プロトタイプ・パラメータ定義で使用できる欄は7-21/24-25/33-39/40/41-42/44-80のみ。
+   *   col22-23が非空白だとRNF3780（重大度20）になる。
+   *
+   * 特に、名前がcol21を超えてcol22に食み出すケース（例: col9開始の14文字名）は、
+   * col33以降のフィールドが正規位置のままだと他のチェックでは検出できない。
+   * col21が埋まっていてcol22に識別子文字が続く場合は名前あふれとして報告する。
+   */
+  private checkDSpecBlankFields(line: ParsedLine): Issue[] {
+    const issues: Issue[] = [];
+    const raw = line.rawContent;
+    if (raw.length < 22) return issues;
+
+    const col21 = raw[20];
+    const col22 = raw[21];
+    const col23 = raw.length >= 23 ? raw[22] : ' ';
+    const declType = raw.length >= 25 ? raw.substring(23, 25).trim().toUpperCase() : '';
+    const isNameChar = (c: string) => /[A-Z0-9_@#$]/i.test(c);
+
+    // 宣言型誤配置パターン（DS/PR/PI/S/Cのcol22-23配置）はD_SPEC_DECL_TYPE_MISPLACEDが
+    // 報告するため、col22/col23の値検証から除外して二重報告を避ける
+    const col22_23 = raw.substring(21, 23).trim().toUpperCase();
+    const col24 = raw.length >= 24 ? raw[23] : ' ';
+    const isMisplacedPattern =
+      (['DS', 'PR', 'PI'].includes(col22_23) && declType === '') ||
+      (['S', 'C'].includes(col22.toUpperCase()) && col23 === ' ' && col24 === ' ');
+
+    let overflowReported = false;
+
+    if (col22 !== ' ' && col22.toUpperCase() !== 'E') {
+      if (col21 !== ' ' && isNameChar(col22)) {
+        // 名前フィールドがcol21まで埋まり、col22に識別子文字が続く = 名前あふれ
+        const nameStart = raw.substring(6).search(/\S/);
+        const m = raw.substring(6 + nameStart).match(/^[A-Z0-9_@#$]+/i);
+        const fullName = m ? m[0] : raw.substring(6, 22).trim();
+        // 修正コード: `...`名前継続行 + 名前フィールドを空白にした元の行
+        const nameEndIdx = 6 + nameStart + fullName.length;
+        const contLine = raw.substring(0, 6) + ' '.repeat(nameStart) + fullName + '...';
+        const restLine = raw.substring(0, 6) + ' '.repeat(nameEndIdx - 6) + raw.substring(nameEndIdx);
+        issues.push({
+          severity: 'error',
+          category: 'structure',
+          line: line.lineNumber,
+          column: 22,
+          message: `D仕様書の名前'${fullName}'が名前フィールド（7-21桁）を超過しています（22桁目以降に食み出し）。`,
+          rule: 'D_SPEC_NAME_OVERFLOW',
+          ruleDescription: '名前フィールドは7-21桁の15桁固定です。22桁は外部記述（E/空白）、23桁はDS型（S/U/空白）であり、名前があふれるとパラメータ定義等でRNF3780（空白必須フィールドが非空白）になります。',
+          suggestion: `名前を短縮してフィールド内（21桁まで）に収めるか、'...'名前継続構文を使用してください。`,
+          codeSnippet: raw,
+          correctedCode: contLine + '\n' + restLine
+        });
+        overflowReported = true;
+      } else {
+        if (!isMisplacedPattern) {
+          issues.push({
+            severity: 'error',
+            category: 'structure',
+            line: line.lineNumber,
+            column: 22,
+            message: `D仕様書の外部記述フィールド（22桁）が不正です: '${col22}'`,
+            rule: 'D_SPEC_EXT_DESC_INVALID',
+            ruleDescription: '22桁目（External Description）に指定できるのは\'E\'（外部記述）または空白のみです。桁位置がずれている可能性があります。',
+            suggestion: '22桁目を確認してください。名前や宣言型の桁位置がずれている可能性があります。',
+            codeSnippet: raw
+          });
+        }
+      }
+    }
+
+    // col23（DS型）の検証。名前あふれ報告済みの行（あふれの続き）と
+    // 宣言型誤配置パターン（D_SPEC_DECL_TYPE_MISPLACEDが報告）はスキップ
+    if (!overflowReported && !isMisplacedPattern && col23 !== ' ') {
+      if (!['S', 'U'].includes(col23.toUpperCase())) {
+        issues.push({
+          severity: 'error',
+          category: 'structure',
+          line: line.lineNumber,
+          column: 23,
+          message: `D仕様書のDS型フィールド（23桁）が不正です: '${col23}'`,
+          rule: 'D_SPEC_DS_TYPE_INVALID',
+          ruleDescription: '23桁目（Type of Data Structure）に指定できるのは\'S\'（PSDS）、\'U\'（データ域DS）または空白のみです。',
+          suggestion: '23桁目を確認してください。桁位置がずれている可能性があります。',
+          codeSnippet: raw
+        });
+      } else if (declType !== 'DS') {
+        issues.push({
+          severity: 'error',
+          category: 'structure',
+          line: line.lineNumber,
+          column: 23,
+          message: `D仕様書の23桁目に'${col23}'がありますが、この行はDS定義ではありません（24-25桁='${declType || '空白'}'）。`,
+          rule: 'D_SPEC_DS_TYPE_INVALID',
+          ruleDescription: '23桁目のDS型（S=PSDS/U=データ域DS）はDS定義行（24-25桁=DS）でのみ有効です。DS定義以外の行では空白必須です（RNF3780）。',
+          suggestion: 'DS定義行であれば24-25桁に\'DS\'を指定し、そうでなければ23桁目を空白にしてください。',
+          codeSnippet: raw
+        });
       }
     }
 
