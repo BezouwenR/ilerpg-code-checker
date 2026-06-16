@@ -358,6 +358,11 @@ D MyVar           S             10A   INZ('日本語')
   ↑ Correctly accounts for shift characters in column position check
 ```
 
+The checker also validates EBCDIC byte length once DBCS shift (SO/SI) bytes are counted:
+
+- **Comment lines** (`*` fixed-form or `//` free-form) over **80 EBCDIC bytes** → warning (`COMMENT_LINE_EBCDIC_OVERFLOW`). Past 80 bytes the compile listing garbles; past 100 bytes the source is truncated by `CPYFRMSTMF` (reported as `LINE_LENGTH` error).
+- **Comment area** (columns 81-100) over **20 EBCDIC bytes** → warning (`COMMENT_DBCS_OVERFLOW`).
+
 ## Development
 
 ### Project Structure

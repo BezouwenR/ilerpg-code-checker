@@ -42,6 +42,7 @@ export class StructureChecker implements Checker {
     // 注釈領域のDBCSバイト長チェック（considerDBCS有効時のみ）
     if (this.considerDBCS) {
       issues.push(...this.checkCommentArea(lines));
+      issues.push(...this.checkCommentLineLength(lines));
     }
 
     return issues;
@@ -1219,6 +1220,54 @@ export class StructureChecker implements Checker {
           correctedCode: corrected
         });
       }
+    }
+
+    return issues;
+  }
+
+  /**
+   * コメント行のEBCDICバイト長チェック（80バイト上限）
+   *
+   * 固定形式RPGのコメント行（col7='*' の固定形式コメント、または行頭が '//' の
+   * 自由形式コメント）は、UTF-8→EBCDIC（例: CCSID 5035/1399）変換時に日本語
+   * (DBCS)文字がSO(0x0E)/SI(0x0F)フレーム付き2バイトに展開されるため、見た目の
+   * 桁数より長くなる。EBCDIC換算で80バイトを超えるとコンパイルリストが文字化けし、
+   * 100バイトを超えるとCPYFRMSTMFがソースを切り捨てる。
+   * 100バイト超は別途 LINE_LENGTH（error）が報告するため、ここでは二重報告を避け
+   * 80バイト超〜100バイト以下のコメント行のみを warning として報告する。
+   *
+   * @param lines パース済み行の配列
+   * @returns 検出された問題の配列
+   */
+  private checkCommentLineLength(lines: ParsedLine[]): Issue[] {
+    const issues: Issue[] = [];
+    const maxBytes = 80;
+    const hardLimit = 100; // これを超える行は LINE_LENGTH（error）が報告するため除外
+
+    for (const line of lines) {
+      // コメント行のみ対象: col7='*'（固定形式）または行頭（先頭空白除く）が '//'（自由形式）
+      const isCommentLine = line.isComment || line.rawContent.trimStart().startsWith('//');
+      if (!isCommentLine) continue;
+
+      // 末尾空白は意味を持たないため除外してEBCDICバイト長を計測（iconv実測と一致）
+      const content = line.rawContent.trimEnd();
+      const byteLength = DBCSHelper.calculateByteLength(content);
+
+      // 80バイト以下は問題なし。100バイト超は LINE_LENGTH（error）に委ねる。
+      if (byteLength <= maxBytes || byteLength > hardLimit) continue;
+
+      const analysis = DBCSHelper.analyzeString(content);
+      issues.push({
+        severity: 'warning',
+        category: 'structure',
+        line: line.lineNumber,
+        column: maxBytes + 1,
+        message: `コメント行のEBCDICバイト長が${byteLength}バイトで、上限${maxBytes}バイトを超えています。TGTCCSID(5035)等でコンパイルするとコンパイルリストが文字化けする可能性があります。(DBCS ${analysis.dbcsCount}文字, SO/SI ${analysis.shiftCharacters}バイト)`,
+        rule: 'COMMENT_LINE_EBCDIC_OVERFLOW',
+        ruleDescription: '固定形式RPGのコメント行はEBCDIC換算で80バイト以内に収める必要があります。日本語(DBCS)文字はSO(0x0E)/SI(0x0F)フレーム付きで1文字2バイトに展開されるため、見た目の桁数より長くなります。80バイト超でコンパイルリストが文字化けし、100バイト超でCPYFRMSTMFがソースを切り捨てます。',
+        suggestion: 'コメントを複数行に分割し、各行をEBCDIC換算で80バイト以内にしてください。',
+        codeSnippet: line.rawContent
+      });
     }
 
     return issues;
