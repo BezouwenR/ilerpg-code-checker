@@ -2,7 +2,7 @@
 // 実例: AIADMND.dspf TENFTR — 無条件定数 'F3/12=戻る  F5=再表示' (23 2, DBCS込み25バイト
 // = col2-26) と標識77付き定数 'F6=追加' (23 26) の重なりが CPD7866 を出した。
 // 一方、77/N77 の排他表示定数同士の重なり (CPD7865) は意図的なので検出しないこと。
-import { Orchestrator } from './build/orchestrator.js';
+import { Orchestrator } from '../build/orchestrator.js';
 import fs from 'fs';
 
 const orchestrator = new Orchestrator({ language: 'ja', considerDBCS: true });

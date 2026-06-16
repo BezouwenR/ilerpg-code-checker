@@ -1,6 +1,6 @@
 # コンパイルエラー原因と対応
 
-ILE RPG UTF-8 PDFプロジェクトのビルドで発生したエラーの一覧。
+ILE RPG UTF-8 ソースプロジェクトのビルドで発生したエラーの一覧。
 次回セッションでの再発防止と、ライセンス復旧後のビルド検証に使用する。
 
 ---
@@ -42,7 +42,7 @@ D仕様書の注記欄は81-100桁（20バイト）。UTF-8ソースで日本語
 |------|------|
 | メッセージ | RNF1324: キーワードはこのコマンドでは無効 |
 | 重大度 | 20 |
-| 影響 | テストプログラム3つ（FEATDEMO, MULTILANG, TTCDEMO） |
+| 影響 | テストプログラム3つ |
 
 ### 原因
 
@@ -92,7 +92,7 @@ WRKLICINF の確認結果:
 ADDLICKEY PRDID(5770WDS) LICTRM(*ANY) FEATURE(5101) LICKEY(xxxx-xxxx-xxxx-xxxx)
 ```
 
-ライセンスキー入力後、COMPILEALL.rexxを再実行してビルド検証を行うこと。
+ライセンスキー入力後、ビルドスクリプトを再実行してビルド検証を行うこと。
 
 ---
 
@@ -113,22 +113,22 @@ RNS9309自体はエラーではなく、上位のエラー（RNF3308、CPF9E71�
 
 ```
 -- 1. ソースPFにコピー
-CPYFRMSTMF FROMSTMF('/home/GURICAT/ILE-RPG_UTF8-PDF/rexx/COMPILEALL.rexx')
-           TOMBR('/QSYS.LIB/PDFLIB.LIB/QREXSRC3.FILE/COMPILEALL.MBR')
+CPYFRMSTMF FROMSTMF('/home/user/project/rexx/COMPILEALL.rexx')
+           TOMBR('/QSYS.LIB/SAMPLELIB.LIB/QREXSRC3.FILE/COMPILEALL.MBR')
            MBROPT(*REPLACE) STMFCCSID(1208) DBFCCSID(1399)
 
 -- 2. 実行
-STRREXPRC SRCMBR(COMPILEALL) SRCFILE(PDFLIB/QREXSRC3)
+STRREXPRC SRCMBR(COMPILEALL) SRCFILE(SAMPLELIB/QREXSRC3)
 ```
 
 ### 期待結果
 
-- Step 2: コアモジュール5つ（UNICODENM, TTFPARSER, TTFSUBSET, PDFTTFCMAP, PDFGEN）→ CRTRPGMOD OK
-- Step 3: サービスプログラム PDFCMAPGEN → CRTSRVPGM OK
-- Step 4: デモプログラム3つ（FEATDEMO, MULTILANG, TTCDEMO）→ CRTRPGMOD OK
+- Step 2: コアモジュール5つ（SAMPLE05, SAMPLE03, SAMPLE04, SAMPLE02, SAMPLE01）→ CRTRPGMOD OK
+- Step 3: サービスプログラム → CRTSRVPGM OK
+- Step 4: デモプログラム3つ → CRTRPGMOD OK
 - Step 5: プログラム作成 → CRTPGM OK
 - Step 6: 実行 → CALL OK
-- Step 7: PDF確認 → featdemo.pdf, multi.pdf, ttcdemo.pdf 存在
+- Step 7: 出力確認 → sample1.out, sample2.out, sample3.out 存在
 
 検出されたエラーは0個であること。
 

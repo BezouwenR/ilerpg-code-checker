@@ -23,7 +23,7 @@ import { CheckLevel, Language, CheckOptions } from './types/index.js';
 class RPGStandardsCheckerServer {
   private server: Server;
   private fileReader: FileReader;
-  private readonly version = '0.0.14';
+  private readonly version = '0.0.15';
 
   constructor() {
     this.server = new Server(

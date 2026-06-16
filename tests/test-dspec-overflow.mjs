@@ -1,4 +1,4 @@
-import { Orchestrator } from './build/orchestrator.js';
+import { Orchestrator } from '../build/orchestrator.js';
 
 // D仕様書行をフィールド単位で正確に組み立てる
 // col1-5空白, col6='D', col7-21=name(15), col22=ext, col23=dsType, col24-25=decl, col26-32=from(7), col33-39=size(7右詰), col40=type, col41-42=dec, col43=空白, col44-=keywords

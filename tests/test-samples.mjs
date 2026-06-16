@@ -1,8 +1,11 @@
-import { Orchestrator } from './build/orchestrator.js';
+import { Orchestrator } from '../build/orchestrator.js';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const samplesDir = './saples';
+// cwdに依存せずモジュール位置基準で samples/ を解決する
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const samplesDir = path.join(__dirname, '..', 'samples');
 const files = fs.readdirSync(samplesDir).filter(f => f.endsWith('.rpgle'));
 
 const options = { language: 'ja', considerDBCS: true };

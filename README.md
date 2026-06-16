@@ -431,9 +431,18 @@ guricat
 
 ## Version
 
-0.0.14
+0.0.15
 
 ## Changelog
+
+### 0.0.15 (2026-06-16)
+- Repository housekeeping (no change to checker detection logic)
+  - Fixed the typo in the sample directory name (`saples/` → `samples/`)
+  - Consolidated the three test scripts (test-samples / test-dspec-overflow / test-dspf-overlap) under `tests/`. Added a single-source verification helper `tests/check-one.mjs <path>`
+- Sanitized and compressed the sample sources (~4660 lines → ~1500 lines total)
+  - Neutralized to avoid evoking the original subject matter and renamed to `SAMPLE01`–`SAMPLE05`. Algorithm bodies stubbed out, identifiers and comments genericized
+  - Preserved the **diversity of RPG constructs** (the value for column-position checks) and kept all five files **compile-clean (0 errors)**
+  - Sanitized proprietary references in the bundled docs as well (generic RPG/EBCDIC knowledge retained)
 
 ### 0.0.14 (2026-06-12)
 - Added **leading attribute byte collision** detection to DSPF_FIELD_OVERLAP (real case: AITNTCFGD.dspf CTLWIN row 4 — `'状態:'`(4,2)=7 bytes col2-8 and `'テナント'`(4,9) are adjacent without data overlap, yet CPD7866 was issued)
