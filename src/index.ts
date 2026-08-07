@@ -5,6 +5,9 @@
  * Model Context Protocol (MCP) server implementation
  */
 
+import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -17,13 +20,19 @@ import { FileReader } from './utils/file-reader.js';
 import { Reporter } from './utils/reporter.js';
 import { CheckLevel, Language, CheckOptions } from './types/index.js';
 
+// package.json から版数を取得する（ハードコードによる更新漏れ防止）
+// build/index.js から見て1階層上が package.json
+const packageJson = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf-8')
+) as { version: string };
+
 /**
  * MCP Server class
  */
 class RPGStandardsCheckerServer {
   private server: Server;
   private fileReader: FileReader;
-  private readonly version = '0.0.15';
+  private readonly version = packageJson.version;
 
   constructor() {
     this.server = new Server(
