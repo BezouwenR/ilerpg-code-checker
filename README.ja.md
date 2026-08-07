@@ -431,9 +431,23 @@ guricat
 
 ## バージョン
 
-0.0.15
+0.0.17
 
 ## 更新履歴
+
+### 0.0.17 (2026-08-07)
+- サーバーが名乗るバージョンを package.json から実行時に取得するよう変更
+  - `src/index.ts` のハードコード（`'0.0.15'`）が v0.0.16 で更新漏れとなり、package.json（0.0.16）とサーバー表記（0.0.15）が食い違っていた（利用側プロジェクトからの指摘）。今後は package.json の version のみ更新すればよい
+- 依存パッケージの脆弱性を解消（`npm audit` 8件 → 0件）
+  - @modelcontextprotocol/sdk 1.25.3 → 1.30.0（GHSA-345p-7cg4-v4c7: 共有トランスポート再利用によるクライアント間データ漏えい）ほか、推移的依存（hono / @hono/node-server / fast-uri / path-to-regexp / ajv / body-parser）を更新。いずれも semver 互換範囲内のため package-lock.json のみの変更
+- チェックロジックに変更なし。回帰テスト4本合格、サンプル5本の error 0件を維持
+
+### 0.0.16 (2026-06-16)
+- コメント行の EBCDIC 80バイト超過検出を追加: `COMMENT_LINE_EBCDIC_OVERFLOW`（warning、DBCS考慮が有効な場合のみ）
+  - 日本語（DBCS）を含むコメント行が EBCDIC 換算で80〜100バイトになるケースが全チェックを素通りしていた（checkLineLength は100バイト超のみ error、checkCommentArea は桁81-100領域のみ対象でコメント行はスキップ。実例: 86バイトの `//` コメント行）
+  - `//` フリーフォームコメントは桁7≠`'*'` のため isComment 判定から漏れる盲点があり、コメント行判定を「桁7=`'*'` または行頭 `//`」に拡張
+  - 80バイト超はコンパイルリストの文字化け、100バイト超は CPYFRMSTMF によるソース切り捨ての実害がある。100バイト超は既存の LINE_LENGTH（error）に委譲して二重報告を回避
+- 回帰テスト `tests/test-comment-ebcdic.mjs` を追加。サンプル5本の error 0件を維持
 
 ### 0.0.15 (2026-06-16)
 - リポジトリ整理（チェッカーの検出ロジックに変更なし）

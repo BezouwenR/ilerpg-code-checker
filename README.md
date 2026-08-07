@@ -436,9 +436,23 @@ guricat
 
 ## Version
 
-0.0.15
+0.0.17
 
 ## Changelog
+
+### 0.0.17 (2026-08-07)
+- The server now reads its version from package.json at runtime
+  - The hardcoded version in `src/index.ts` (`'0.0.15'`) was missed in the v0.0.16 release, so package.json (0.0.16) and the server's reported version (0.0.15) disagreed (reported by a consuming project). From now on only the package.json version needs updating
+- Resolved dependency vulnerabilities (`npm audit`: 8 → 0)
+  - @modelcontextprotocol/sdk 1.25.3 → 1.30.0 (GHSA-345p-7cg4-v4c7: cross-client data leak via shared server/transport instance reuse), plus transitive dependency updates (hono / @hono/node-server / fast-uri / path-to-regexp / ajv / body-parser). All within semver-compatible ranges, so only package-lock.json changed
+- No change to checker detection logic. All four regression suites pass; all five samples remain at 0 errors
+
+### 0.0.16 (2026-06-16)
+- Added detection of comment lines exceeding 80 EBCDIC bytes: `COMMENT_LINE_EBCDIC_OVERFLOW` (warning, only when DBCS handling is enabled)
+  - Comment lines with Japanese (DBCS) text reaching 80–100 EBCDIC bytes slipped through every length check (checkLineLength only errors past 100 bytes; checkCommentArea only covers the col81-100 area and skips comment lines. Real case: an 86-byte `//` comment line)
+  - `//` free-form comments also evaded the isComment flag (col7 ≠ `'*'`), so comment-line detection was extended to "col7 = `'*'` or the line starts with `//`"
+  - Past 80 bytes the compile listing garbles; past 100 bytes CPYFRMSTMF truncates the source. Lines over 100 bytes are left to the existing LINE_LENGTH error to avoid double reporting
+- Added regression test `tests/test-comment-ebcdic.mjs`. All five samples remain at 0 errors
 
 ### 0.0.15 (2026-06-16)
 - Repository housekeeping (no change to checker detection logic)
